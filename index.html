@@ -247,6 +247,50 @@
 
   .zero-val { color: var(--muted); }
 
+  .result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .btn-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    background: rgba(108,99,255,0.18);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: background 0.15s, color 0.15s, transform 0.1s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .btn-copy:hover {
+    background: var(--accent);
+    color: #fff;
+    transform: scale(1.04);
+  }
+
+  .btn-copy.copied {
+    background: var(--accent2);
+    border-color: var(--accent2);
+    color: #fff;
+  }
+
+  .th-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
   @media (max-width: 900px) {
     .upload-grid, .results-grid { grid-template-columns: 1fr; }
   }
@@ -508,8 +552,20 @@
         </div>`;
       }
 
+      // Build Area values list for copy (newline-separated for Excel column paste)
+      const areaValues = TIME_STEPS.map(t => {
+        const entry = r.data[t];
+        if (entry && entry.dup) return entry.area.map(a => a.toFixed(2)).join('/');
+        if (entry && entry.area !== null) return entry.area.toFixed(2);
+        return '0';
+      });
+      const copyId = `copy-btn-${i}`;
+
       card.innerHTML = `
-        <div class="result-header">PDF ${i} — ${r.fileName}</div>
+        <div class="result-header">
+          <span>PDF ${i} — ${r.fileName}</span>
+          <button class="btn-copy" id="${copyId}" title="Area 값을 클립보드에 복사 (엑셀 세로 붙여넣기용)">📋 Area 복사</button>
+        </div>
         <div class="result-table-wrap">
           <table>
             <thead><tr><th>시간 (min)</th><th>Area</th></tr></thead>
@@ -517,6 +573,39 @@
           </table>
         </div>
         ${warnHtml}`;
+
+      // Attach copy event after innerHTML set
+      setTimeout(() => {
+        const btn = document.getElementById(copyId);
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+          const text = areaValues.join('\n');
+          navigator.clipboard.writeText(text).then(() => {
+            btn.textContent = '✅ 복사됨!';
+            btn.classList.add('copied');
+            setTimeout(() => {
+              btn.innerHTML = '📋 Area 복사';
+              btn.classList.remove('copied');
+            }, 1800);
+          }).catch(() => {
+            // Fallback for older browsers
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            btn.textContent = '✅ 복사됨!';
+            btn.classList.add('copied');
+            setTimeout(() => {
+              btn.innerHTML = '📋 Area 복사';
+              btn.classList.remove('copied');
+            }, 1800);
+          });
+        });
+      }, 0);
 
       el.appendChild(card);
     });
