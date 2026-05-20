@@ -291,6 +291,66 @@
     gap: 6px;
   }
 
+  /* Settings Panel Styling */
+  .settings-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    max-width: 500px;
+    margin: 0 auto 28px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+
+  .settings-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--accent2);
+    margin-bottom: 12px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .input-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .input-group label {
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .input-group input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-size: 0.9rem;
+    font-weight: 600;
+    outline: none;
+    text-align: center;
+    transition: border-color 0.2s;
+  }
+
+  .input-group input:focus {
+    border-color: var(--accent2);
+  }
+
   @media (max-width: 900px) {
     .upload-grid, .results-grid { grid-template-columns: 1fr; }
   }
@@ -299,7 +359,22 @@
 <body>
 
 <h1>📊 PDF Area 값 추출기</h1>
-<p class="subtitle">RT(min) 5분 간격 × 소수점 .670~.690 범위 → Area 값 자동 추출</p>
+<p class="subtitle">RT(min) 5분 간격 × 커스텀 소수점 범위 → Area 값 자동 추출</p>
+
+<!-- Settings Panel -->
+<div class="settings-panel">
+  <div class="settings-title">⚙️ RT 소수점 검색 범위 설정</div>
+  <div class="settings-row">
+    <div class="input-group">
+      <label for="dec-min">최소 소수점 (Min)</label>
+      <input type="number" id="dec-min" value="0.670" step="0.001" min="0" max="0.999">
+    </div>
+    <div class="input-group">
+      <label for="dec-max">최대 소수점 (Max)</label>
+      <input type="number" id="dec-max" value="0.690" step="0.001" min="0" max="0.999">
+    </div>
+  </div>
+</div>
 
 <div class="upload-grid">
   <div class="upload-card" id="card-1">
@@ -439,12 +514,14 @@
     return rows;
   }
 
-  function extractAreaForTime(rows, targetTime) {
-    // Find rows where integer part == targetTime and decimal in [0.670, 0.690]
+  function extractAreaForTime(rows, targetTime, minDec, maxDec) {
+    // Find rows where integer part == targetTime and decimal in [minDec, maxDec]
     const matches = rows.filter(r => {
       const intPart = Math.floor(r.rt);
       const decPart = r.rt - intPart;
-      return intPart === targetTime && decPart >= 0.670 && decPart <= 0.690;
+      // To prevent floating precision issues, round decimal part to 4 digits
+      const decRounded = parseFloat(decPart.toFixed(4));
+      return intPart === targetTime && decRounded >= minDec && decRounded <= maxDec;
     });
     return matches;
   }
@@ -453,6 +530,14 @@
     const loaded = [1,2,3].filter(i => files[i]);
     if (loaded.length === 0) {
       alert('PDF 파일을 하나 이상 선택해주세요.');
+      return;
+    }
+
+    const minDecVal = parseFloat(document.getElementById('dec-min').value);
+    const maxDecVal = parseFloat(document.getElementById('dec-max').value);
+
+    if (isNaN(minDecVal) || isNaN(maxDecVal) || minDecVal < 0 || maxDecVal < 0) {
+      alert('올바른 소수점 검색 범위를 입력해주세요.');
       return;
     }
 
@@ -476,7 +561,7 @@
         const data = {};
         const duplicates = [];
         for (const t of TIME_STEPS) {
-          const matches = extractAreaForTime(rows, t);
+          const matches = extractAreaForTime(rows, t, minDecVal, maxDecVal);
           if (matches.length === 1) {
             data[t] = { area: matches[0].area, rt: matches[0].rt, dup: false };
           } else if (matches.length > 1) {
@@ -516,9 +601,12 @@
         return;
       }
 
+      // PDF 2 and 3 should exclude 0 min (0초)
+      const activeSteps = (i === 1) ? TIME_STEPS : TIME_STEPS.filter(t => t !== 0);
+
       // Build table
       let tableRows = '';
-      TIME_STEPS.forEach(t => {
+      activeSteps.forEach(t => {
         const entry = r.data[t];
         let areaText = '—';
         let rowClass = '';
@@ -541,19 +629,23 @@
       // Duplicate warning
       let warnHtml = '';
       if (r.duplicates && r.duplicates.length > 0) {
-        const items = r.duplicates.map(d =>
-          `<div class="warning-item">⚠ 시간 <b>${d.t}분</b>: ` +
-          d.matches.map(m => `RT=${m.rt.toFixed(4)}, Area=${m.area.toFixed(2)}`).join(' / ') +
-          `</div>`
-        ).join('');
-        warnHtml = `<div class="warning-box">
-          <strong>🔴 중복 검출: ${r.duplicates.length}개 시간대에서 2개 이상의 값이 추출됨</strong>
-          ${items}
-        </div>`;
+        // Exclude duplicate warning for 0 min in PDF 2 and 3
+        const activeDuplicates = (i === 1) ? r.duplicates : r.duplicates.filter(d => d.t !== 0);
+        if (activeDuplicates.length > 0) {
+          const items = activeDuplicates.map(d =>
+            `<div class="warning-item">⚠ 시간 <b>${d.t}분</b>: ` +
+            d.matches.map(m => `RT=${m.rt.toFixed(4)}, Area=${m.area.toFixed(2)}`).join(' / ') +
+            `</div>`
+          ).join('');
+          warnHtml = `<div class="warning-box">
+            <strong>🔴 중복 검출: ${activeDuplicates.length}개 시간대에서 2개 이상의 값이 추출됨</strong>
+            ${items}
+          </div>`;
+        }
       }
 
       // Build Area values list for copy (newline-separated for Excel column paste)
-      const areaValues = TIME_STEPS.map(t => {
+      const areaValues = activeSteps.map(t => {
         const entry = r.data[t];
         if (entry && entry.dup) return entry.area.map(a => a.toFixed(2)).join('/');
         if (entry && entry.area !== null) return entry.area.toFixed(2);
