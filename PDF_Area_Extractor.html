@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Area 값 추출기</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d2e;
+    --surface2: #232640;
+    --accent: #6c63ff;
+    --accent2: #48cfad;
+    --danger: #ff4d6d;
+    --danger-bg: rgba(255,77,109,0.15);
+    --text: #e8eaf6;
+    --muted: #8892b0;
+    --border: rgba(108,99,255,0.25);
+    --green: #48cfad;
+    --green-bg: rgba(72,207,173,0.1);
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-bottom: 32px;
+  }
+
+  .upload-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 28px;
+  }
+
+  .upload-card {
+    background: var(--surface);
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    padding: 24px 16px;
+    text-align: center;
+    transition: border-color 0.25s, background 0.25s;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .upload-card:hover, .upload-card.drag-over {
+    border-color: var(--accent);
+    background: var(--surface2);
+  }
+
+  .upload-card.has-file {
+    border-style: solid;
+    border-color: var(--accent2);
+    background: var(--green-bg);
+  }
+
+  .upload-label {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  .upload-icon {
+    font-size: 2.2rem;
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  .upload-hint {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+
+  .file-name {
+    font-size: 0.78rem;
+    color: var(--accent2);
+    font-weight: 500;
+    margin-top: 8px;
+    word-break: break-all;
+  }
+
+  input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .btn-run {
+    display: block;
+    margin: 0 auto 32px;
+    padding: 14px 48px;
+    background: linear-gradient(135deg, var(--accent), #8b80ff);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 24px rgba(108,99,255,0.35);
+    font-family: 'Inter', sans-serif;
+  }
+
+  .btn-run:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(108,99,255,0.5); }
+  .btn-run:active { transform: translateY(0); }
+  .btn-run:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+
+  .result-card {
+    background: var(--surface);
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .result-header {
+    background: var(--surface2);
+    padding: 14px 18px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .result-table-wrap {
+    overflow-y: auto;
+    max-height: 560px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+
+  thead th {
+    background: var(--surface2);
+    padding: 10px 14px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  tbody tr { border-bottom: 1px solid rgba(255,255,255,0.04); }
+  tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+
+  tbody td {
+    padding: 9px 14px;
+    text-align: center;
+  }
+
+  tbody td:first-child {
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  tbody td:last-child {
+    font-weight: 600;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .row-duplicate td {
+    background: var(--danger-bg) !important;
+    color: var(--danger) !important;
+    font-weight: 700 !important;
+  }
+
+  .row-duplicate td:first-child {
+    color: var(--danger) !important;
+  }
+
+  .warning-box {
+    margin: 14px 16px 16px;
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 0.82rem;
+    color: var(--danger);
+  }
+
+  .warning-box strong { display: block; margin-bottom: 6px; font-size: 0.88rem; }
+  .warning-item { margin-top: 4px; }
+
+  .status {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+    padding: 16px;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .zero-val { color: var(--muted); }
+
+  @media (max-width: 900px) {
+    .upload-grid, .results-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>📊 PDF Area 값 추출기</h1>
+<p class="subtitle">RT(min) 5분 간격 × 소수점 .670~.690 범위 → Area 값 자동 추출</p>
+
+<div class="upload-grid">
+  <div class="upload-card" id="card-1">
+    <span class="upload-icon">📄</span>
+    <span class="upload-label">PDF 1</span>
+    <p class="upload-hint">클릭하거나 파일을 여기에 드래그</p>
+    <div class="file-name" id="fname-1">파일 미선택</div>
+    <input type="file" id="file-1" accept=".pdf" onchange="onFileChange(1, this)">
+  </div>
+  <div class="upload-card" id="card-2">
+    <span class="upload-icon">📄</span>
+    <span class="upload-label">PDF 2</span>
+    <p class="upload-hint">클릭하거나 파일을 여기에 드래그</p>
+    <div class="file-name" id="fname-2">파일 미선택</div>
+    <input type="file" id="file-2" accept=".pdf" onchange="onFileChange(2, this)">
+  </div>
+  <div class="upload-card" id="card-3">
+    <span class="upload-icon">📄</span>
+    <span class="upload-label">PDF 3</span>
+    <p class="upload-hint">클릭하거나 파일을 여기에 드래그</p>
+    <div class="file-name" id="fname-3">파일 미선택</div>
+    <input type="file" id="file-3" accept=".pdf" onchange="onFileChange(3, this)">
+  </div>
+</div>
+
+<button class="btn-run" id="btn-run" onclick="runExtraction()">🔍 Area 값 추출 시작</button>
+
+<div id="status" class="status" style="display:none"></div>
+<div class="results-grid" id="results"></div>
+
+<script>
+  // PDF.js worker
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  const TIME_STEPS = [];
+  for (let t = 0; t <= 115; t += 5) TIME_STEPS.push(t);
+
+  const files = { 1: null, 2: null, 3: null };
+
+  function onFileChange(idx, input) {
+    if (!input.files[0]) return;
+    files[idx] = input.files[0];
+    document.getElementById('fname-' + idx).textContent = input.files[0].name;
+    document.getElementById('card-' + idx).classList.add('has-file');
+  }
+
+  // Drag-and-drop
+  [1,2,3].forEach(i => {
+    const card = document.getElementById('card-' + i);
+    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f && f.type === 'application/pdf') {
+        files[i] = f;
+        document.getElementById('fname-' + i).textContent = f.name;
+        card.classList.add('has-file');
+      }
+    });
+  });
+
+  async function extractTextFromPDF(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      // Collect items with their positions
+      const items = content.items.map(item => ({
+        str: item.str,
+        x: item.transform[4],
+        y: item.transform[5],
+        w: item.width
+      }));
+      // Group by y-position (same row = within 3px)
+      const rows = [];
+      items.forEach(item => {
+        if (!item.str.trim()) return;
+        const row = rows.find(r => Math.abs(r.y - item.y) < 3);
+        if (row) row.items.push(item);
+        else rows.push({ y: item.y, items: [item] });
+      });
+      rows.sort((a, b) => b.y - a.y);
+      rows.forEach(row => {
+        row.items.sort((a, b) => a.x - b.x);
+        fullText += row.items.map(i => i.str).join('\t') + '\n';
+      });
+    }
+    return fullText;
+  }
+
+  function parseRows(text) {
+    // Each data row: RT[min] | Type | Width | Area | Height | Area% | Name
+    // We look for lines where first token is a number (RT)
+    const lines = text.split('\n');
+    const rows = [];
+    for (const line of lines) {
+      const parts = line.split('\t').map(s => s.trim()).filter(Boolean);
+      if (parts.length < 4) continue;
+      const rt = parseFloat(parts[0]);
+      if (isNaN(rt)) continue;
+      // parts[3] should be Area (4th column: RT, Type, Width, Area)
+      // But PDF parsing may vary; try to find numeric value for Area
+      // Column order: RT[min], Type, Width[min], Area, Height, Area%, Name
+      // Some rows may not have Type/Width; let's be flexible
+      // Find all numeric parts
+      const nums = [];
+      parts.forEach((p, idx) => {
+        if (idx === 0) return; // skip RT itself
+        const v = parseFloat(p.replace(/,/g, ''));
+        if (!isNaN(v)) nums.push({ val: v, idx });
+      });
+      // Area is the 4th column (index 3), which corresponds to nums[1] after skipping Type
+      // Actually let's just take parts[3] directly as Area
+      let area = null;
+      if (parts.length >= 4) {
+        // Skip Type (could be "VV", "BB", etc.), Width, then Area
+        // Find index of Area: after RT, skip non-numeric(Type), then Width(numeric), then Area(numeric)
+        let numCount = 0;
+        for (let i = 1; i < parts.length; i++) {
+          const v = parseFloat(parts[i].replace(/,/g, ''));
+          if (!isNaN(v)) {
+            numCount++;
+            if (numCount === 2) { // 1st numeric=Width, 2nd numeric=Area
+              area = v;
+              break;
+            }
+          }
+        }
+      }
+      if (area !== null) rows.push({ rt, area });
+    }
+    return rows;
+  }
+
+  function extractAreaForTime(rows, targetTime) {
+    // Find rows where integer part == targetTime and decimal in [0.670, 0.690]
+    const matches = rows.filter(r => {
+      const intPart = Math.floor(r.rt);
+      const decPart = r.rt - intPart;
+      return intPart === targetTime && decPart >= 0.670 && decPart <= 0.690;
+    });
+    return matches;
+  }
+
+  async function runExtraction() {
+    const loaded = [1,2,3].filter(i => files[i]);
+    if (loaded.length === 0) {
+      alert('PDF 파일을 하나 이상 선택해주세요.');
+      return;
+    }
+
+    const btn = document.getElementById('btn-run');
+    btn.disabled = true;
+    const statusEl = document.getElementById('status');
+    statusEl.style.display = 'block';
+    statusEl.innerHTML = '<span class="spinner"></span> PDF 분석 중...';
+
+    const resultsEl = document.getElementById('results');
+    resultsEl.innerHTML = '';
+
+    const results = {};
+    for (const i of [1,2,3]) {
+      if (!files[i]) { results[i] = null; continue; }
+      try {
+        statusEl.innerHTML = `<span class="spinner"></span> PDF ${i} 텍스트 추출 중...`;
+        const text = await extractTextFromPDF(files[i]);
+        const rows = parseRows(text);
+        // Build result map
+        const data = {};
+        const duplicates = [];
+        for (const t of TIME_STEPS) {
+          const matches = extractAreaForTime(rows, t);
+          if (matches.length === 1) {
+            data[t] = { area: matches[0].area, rt: matches[0].rt, dup: false };
+          } else if (matches.length > 1) {
+            data[t] = { area: matches.map(m => m.area), rt: matches.map(m => m.rt), dup: true };
+            duplicates.push({ t, matches });
+          } else {
+            data[t] = { area: null, rt: null, dup: false };
+          }
+        }
+        results[i] = { data, duplicates, fileName: files[i].name, rawRows: rows };
+      } catch (err) {
+        results[i] = { error: err.message, fileName: files[i].name };
+      }
+    }
+
+    statusEl.style.display = 'none';
+    btn.disabled = false;
+    renderResults(results);
+  }
+
+  function renderResults(results) {
+    const el = document.getElementById('results');
+    el.innerHTML = '';
+
+    [1,2,3].forEach(i => {
+      const r = results[i];
+      if (!r) return;
+
+      const card = document.createElement('div');
+      card.className = 'result-card';
+
+      if (r.error) {
+        card.innerHTML = `
+          <div class="result-header">PDF ${i} — ${r.fileName}</div>
+          <div class="status" style="color:var(--danger)">❌ 오류: ${r.error}</div>`;
+        el.appendChild(card);
+        return;
+      }
+
+      // Build table
+      let tableRows = '';
+      TIME_STEPS.forEach(t => {
+        const entry = r.data[t];
+        let areaText = '—';
+        let rowClass = '';
+
+        if (entry && entry.dup) {
+          areaText = entry.area.map(a => a.toFixed(2)).join(' / ');
+          rowClass = 'row-duplicate';
+        } else if (entry && entry.area !== null) {
+          areaText = entry.area.toFixed(2);
+        } else {
+          areaText = '<span class="zero-val">0</span>';
+        }
+
+        tableRows += `<tr class="${rowClass}">
+          <td>${t}</td>
+          <td>${areaText}</td>
+        </tr>`;
+      });
+
+      // Duplicate warning
+      let warnHtml = '';
+      if (r.duplicates && r.duplicates.length > 0) {
+        const items = r.duplicates.map(d =>
+          `<div class="warning-item">⚠ 시간 <b>${d.t}분</b>: ` +
+          d.matches.map(m => `RT=${m.rt.toFixed(4)}, Area=${m.area.toFixed(2)}`).join(' / ') +
+          `</div>`
+        ).join('');
+        warnHtml = `<div class="warning-box">
+          <strong>🔴 중복 검출: ${r.duplicates.length}개 시간대에서 2개 이상의 값이 추출됨</strong>
+          ${items}
+        </div>`;
+      }
+
+      card.innerHTML = `
+        <div class="result-header">PDF ${i} — ${r.fileName}</div>
+        <div class="result-table-wrap">
+          <table>
+            <thead><tr><th>시간 (min)</th><th>Area</th></tr></thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>
+        ${warnHtml}`;
+
+      el.appendChild(card);
+    });
+  }
+</script>
+</body>
+</html>
